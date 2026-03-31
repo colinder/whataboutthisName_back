@@ -15,7 +15,7 @@ from .utils import created_at, updated_at
 class Record(Base):
     __tablename__ = "records"
 
-    id: Mapped[UUIDType] = mapped_column(UUIDType, default=uuid.uuid4, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name_id: Mapped[UUIDType] = mapped_column(
         UUIDType, ForeignKey("names.id"), nullable=False, comment="이름 FK"
     )

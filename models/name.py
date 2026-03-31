@@ -1,9 +1,7 @@
-import uuid
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy_utils import UUIDType
 
 from database import Base
 
@@ -16,7 +14,7 @@ if TYPE_CHECKING:
 class Name(Base):
     __tablename__ = "names"
 
-    id: Mapped[UUIDType] = mapped_column(UUIDType, default=uuid.uuid4, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, comment="이름 항목")
     count: Mapped[int] = mapped_column(Integer, nullable=False, comment="건수")
 
