@@ -136,7 +136,6 @@ class CollectorService:
         try:
             driver.get(url)
 
-            # 페이지 완전 로드 대기
             # 1. iframe 로드 대기 후 전환
             iframe = wait.until(EC.presence_of_element_located((By.TAG_NAME, "iframe")))
             driver.switch_to.frame(iframe)
