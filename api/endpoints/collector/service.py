@@ -2,10 +2,11 @@ import asyncio
 import platform
 import re
 import time
-from datetime import date, datetime
+from datetime import date
+from itertools import product
 from pathlib import Path
 
-from models.Enums import GenderEnum
+from models.Enums import CityEnum, GenderEnum
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeService
@@ -119,15 +120,47 @@ class CollectorService:
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--disable-gpu")
-            options.add_argument("--window-size=1920,1080")
+            options.add_argument("--window-size=800,600")
             service = ChromeService(ChromeDriverManager().install())
             return webdriver.Chrome(service=service, options=options)
 
     @staticmethod
+    def _reset_and_set_city(driver, city_name: str):
+        """이전 시도 선택 초기화 후 새로 선택"""
+        driver.execute_script("""
+            var key = Object.keys(window).find(k => k.startsWith('param_SidoCd_'));
+            var obj = window[key];
+            obj.SetSelectText('');
+        """)
+        time.sleep(0.3)
+
+        CollectorService._set_city(
+            driver,
+            id="param_SidoCd_1774502844314_selectedContainer",
+            city_name=city_name,
+        )
+
+    @staticmethod
+    def _reset_and_set_gender(driver, gender_name: str):
+        """이전 성별 선택 초기화 후 새로 선택"""
+        driver.execute_script("""
+            var key = Object.keys(window).find(k => k.startsWith('param_GenderCd_'));
+            var obj = window[key];
+            obj.SetSelectText('');
+        """)
+        time.sleep(0.3)
+
+        CollectorService._set_gender(
+            driver,
+            id="param_GenderCd",
+            gender_name=gender_name,
+        )
+
+    @staticmethod
     def _sync_crawl(
         dates: list[date],
-        city: str,
-        gender: GenderEnum,
+        cities: list[CityEnum],
+        genders: list[GenderEnum],
     ):
         url = "https://stfamily.scourt.go.kr/st/StFrrStatcsView.do?pgmId=090000000025"
         driver = CollectorService._get_driver()
@@ -144,116 +177,94 @@ class CollectorService:
             wait.until(EC.visibility_of_element_located((By.ID, "btn_query")))
 
             dates.sort(reverse=True)
-            for target_date in dates:
-                # 시작일 설정
-                CollectorService._set_date(
-                    driver,
-                    cal_img_id="param_MultiCandType_stdt_elem_cal",
-                    year=target_date.year,
-                    month=target_date.month,
-                    day=target_date.day,
-                )
-                CollectorService._dismiss_alert(driver)
-                # print(
-                #     "시작일:",
-                #     driver.find_element(
-                #         By.ID, "param_MultiCandType_stdt_elem"
-                #     ).get_attribute("value"),
-                # )
 
-                time.sleep(3)
+            for city, gender in product(cities, genders):
+                print(f"\n=== {city.value} / {gender.value} 수집 시작 ===")
 
-                # 종료일 설정
-                CollectorService._set_date(
-                    driver,
-                    cal_img_id="param_MultiCandType_eddt_elem_cal",
-                    year=target_date.year,
-                    month=target_date.month,
-                    day=target_date.day,
-                )
-                CollectorService._dismiss_alert(driver)
-                # print(
-                #     "종료일:",
-                #     driver.find_element(
-                #         By.ID, "param_MultiCandType_eddt_elem"
-                #     ).get_attribute("value"),
-                # )
-
-                # 시도 선택
-                CollectorService._set_city(
-                    driver,
-                    id="param_SidoCd_1774502844314_selectedContainer",
-                    city_name=city,
-                )
-
-                # 성별 선택
-                CollectorService._set_gender(
-                    driver,
-                    id="param_SidoCd_1774502844314_selectedContainer",
-                    gender_name=gender.value
-                    if isinstance(gender, GenderEnum)
-                    else gender,
-                )
-
-                # 검색 클릭
-                driver.find_element(By.ID, "btn_query").click()
-
-                # 결과 대기: 데이터 또는 "조회된 데이터가 없습니다"
-                try:
-                    WebDriverWait(driver, 10).until(
-                        lambda d: (
-                            d.find_elements(By.CSS_SELECTOR, ".GMDataRow")
-                            or "조회된 데이터가 없습니다" in d.page_source
-                        )
+                for target_date in dates:
+                    # 시작일 설정
+                    CollectorService._set_date(
+                        driver,
+                        cal_img_id="param_MultiCandType_stdt_elem_cal",
+                        year=target_date.year,
+                        month=target_date.month,
+                        day=target_date.day,
                     )
-                except:
-                    pass
+                    CollectorService._dismiss_alert(driver)
 
-                time.sleep(1)
+                    time.sleep(1)
 
-                # 데이터 없는 경우
-                if "조회된 데이터가 없습니다" in driver.page_source:
-                    print(f"{target_date} - 조회 결과 없음 (정상)")
+                    # 종료일 설정
+                    CollectorService._set_date(
+                        driver,
+                        cal_img_id="param_MultiCandType_eddt_elem_cal",
+                        year=target_date.year,
+                        month=target_date.month,
+                        day=target_date.day,
+                    )
+                    CollectorService._dismiss_alert(driver)
+
+                    # 시도 선택 (이전 선택 초기화 후 새로 선택)
+                    CollectorService._reset_and_set_city(driver, city.value)
+
+                    # 성별 선택 (이전 선택 초기화 후 새로 선택)
+                    CollectorService._reset_and_set_gender(driver, gender.value)
+
+                    # 검색 클릭
+                    driver.find_element(By.ID, "btn_query").click()
+
+                    # 결과 대기
+                    try:
+                        WebDriverWait(driver, 10).until(
+                            lambda d: (
+                                d.find_elements(By.CSS_SELECTOR, ".GMDataRow")
+                                or "조회된 데이터가 없습니다" in d.page_source
+                            )
+                        )
+                    except:
+                        pass
+
+                    time.sleep(1)
+
+                    # 데이터 없는 경우
+                    if "조회된 데이터가 없습니다" in driver.page_source:
+                        print(f"  {target_date} - 조회 결과 없음 (정상)")
+                        continue
+
+                    # 데이터 추출
+                    rows = driver.find_elements(By.CSS_SELECTOR, ".GMDataRow")
+
+                    data = []
+                    for row in rows:
+                        cells = row.find_elements(
+                            By.CSS_SELECTOR, "td[class*='GMCell']"
+                        )
+                        if len(cells) >= 4:
+                            rank = cells[0].text.strip()
+                            name = cells[1].text.strip()
+
+                            if rank == "합계" or not name:
+                                continue
+
+                            data.append(
+                                {
+                                    "name": re.sub(r"\(.*?\)", "", name).strip(),
+                                    "count": cells[3].text.strip(),
+                                }
+                            )
+
                     result = {
-                        "data": [],
+                        "date": str(target_date),
+                        "city": city.value,
+                        "gender": gender.value,
+                        "data": data,
                         "check": {
                             "is_success": True,
-                            "has_result": False,
+                            "has_result": len(data) > 0,
                         },
                     }
-                    print(result)
-                    continue
 
-                # 데이터 추출
-                rows = driver.find_elements(By.CSS_SELECTOR, ".GMDataRow")
-
-                data = []
-                for row in rows:
-                    cells = row.find_elements(By.CSS_SELECTOR, "td[class*='GMCell']")
-                    if len(cells) >= 4:
-                        rank = cells[0].text.strip()
-                        name = cells[1].text.strip()
-
-                        # 합계, 빈 행 제외 (기타는 수집)
-                        if rank == "합계" or not name:
-                            continue
-
-                        data.append(
-                            {
-                                "name": re.sub(r"\(.*?\)", "", name).strip(),
-                                "count": cells[3].text.strip(),
-                            }
-                        )
-
-                result = {
-                    "data": data,
-                    "check": {
-                        "is_success": True,
-                        "has_result": len(data) > 0,
-                    },
-                }
-
-                print(result)
+                    print(f"  {target_date} - {len(data)}건 수집")
 
         except Exception as e:
             print(f"에러 발생: {type(e).__name__}: {e}")
@@ -266,15 +277,20 @@ class CollectorService:
     @staticmethod
     async def crawl(
         dates: list[date],
-        city: str,
-        gender: GenderEnum,
+        cities: list[CityEnum] | None = None,
+        genders: list[GenderEnum] | None = None,
     ):
+        if cities is None:
+            cities = [city for city in CityEnum if "구)" not in city.value]
+        if genders is None:
+            genders = list(GenderEnum)
 
-        # 셀레니움은 동기 라이브러리라 run_in_executor로 실행
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(
             None,
-            lambda: CollectorService._sync_crawl(dates, city, gender),
+            lambda: CollectorService._sync_crawl(dates, cities, genders),
         )
 
-        return {"message": "ok"}
+        return {
+            "message": f"{len(cities)}개 도시 x {len(genders)}개 성별 x {len(dates)}일 수집 완료"
+        }

@@ -11,8 +11,8 @@ collector_router = APIRouter()
 
 class CrawlRequest(BaseModel):
     target_date: list[date]
-    city: CityEnum
-    gender: GenderEnum
+    city: list[CityEnum] | None = None
+    gender: list[GenderEnum] | None = None
 
 
 @collector_router.post("")
@@ -22,8 +22,8 @@ async def crawl(
 ):
     await service.crawl(
         dates=body.target_date,
-        city=body.city.value,
-        gender=body.gender,
+        cities=body.city,
+        genders=body.gender,
     )
 
     return {"message": "ok"}
