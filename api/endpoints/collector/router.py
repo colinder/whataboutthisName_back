@@ -1,18 +1,18 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends
+from models.Enums import CityEnum, GenderEnum
 from pydantic import BaseModel
 
 from api.endpoints.collector.service import CollectorService
-from models.Enums import CityEnum, GenderEnum
 
 collector_router = APIRouter()
 
 
 class CrawlRequest(BaseModel):
-    target_date: date
+    target_date: list[date]
     city: CityEnum
-    gender: GenderEnum = GenderEnum.ALL
+    gender: GenderEnum
 
 
 @collector_router.post("")
@@ -21,8 +21,7 @@ async def crawl(
     service: CollectorService = Depends(CollectorService),
 ):
     await service.crawl(
-        start_date=body.target_date,
-        end_date=body.target_date,
+        dates=body.target_date,
         city=body.city.value,
         gender=body.gender,
     )

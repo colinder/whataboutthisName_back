@@ -35,6 +35,5 @@ class CityEnum(str, enum.Enum):
 
 
 class GenderEnum(str, enum.Enum):
-    ALL = "전체"
-    MALE = "남"
-    FEMALE = "여"
+    MALE = "남자"
+    FEMALE = "여자"
