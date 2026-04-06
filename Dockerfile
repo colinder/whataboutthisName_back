@@ -26,10 +26,6 @@ RUN CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+') \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 소스 복사
+
 COPY . .
-
-# drivers 폴더 제외 (윈도우용 msedgedriver.exe 불필요)
-RUN rm -rf drivers/
-
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -6,7 +6,10 @@ from datetime import date
 from itertools import product
 from pathlib import Path
 
+from database import SessionLocal
 from models.Enums import CityEnum, GenderEnum
+from models.name import Name
+from models.record import Record
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeService
@@ -15,15 +18,70 @@ from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.edge.service import Service as EdgeService
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+from sqlalchemy import select
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
-SAVE_DIR = Path("data")
-
-BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
+from .db_service import save_crawl_results, save_empty_crawl_log
 
 
 class CollectorService:
+    @staticmethod
+    def _save_to_db(results: list[dict]):
+        db = SessionLocal()
+        try:
+            # 이름 캐시 (DB 조회 최소화)
+            name_cache = {}
+
+            for item in results:
+                name_str = item["name"]
+                count = int(item["count"]) if item["count"] else 0
+
+                # 이름 조회/생성 (캐시 활용)
+                if name_str not in name_cache:
+                    stmt = select(Name).where(Name.name == name_str)
+                    name_obj = db.execute(stmt).scalar_one_or_none()
+
+                    if not name_obj:
+                        name_obj = Name(name=name_str, count=0)
+                        db.add(name_obj)
+                        db.flush()
+
+                    name_cache[name_str] = name_obj
+
+                name_obj = name_cache[name_str]
+                name_obj.count += count
+
+                # records 중복 체크 후 저장
+                stmt = select(Record).where(
+                    Record.name_id == name_obj.id,
+                    Record.city == item["city"],
+                    Record.record_date == item["record_date"],
+                    Record.gender == item["gender"],
+                )
+                existing = db.execute(stmt).scalar_one_or_none()
+
+                if not existing:
+                    db.add(
+                        Record(
+                            name_id=name_obj.id,
+                            city=item["city"],
+                            record_date=item["record_date"],
+                            gender=item["gender"],
+                            count=count,
+                        )
+                    )
+                else:
+                    existing.count = count
+
+            db.commit()
+
+        except Exception as e:
+            db.rollback()
+            print(f"DB 저장 실패: {e}")
+        finally:
+            db.close()
+
     @staticmethod
     def _dismiss_alert(driver):
         """30일 초과 팝업이 뜨면 확인 클릭"""
@@ -120,7 +178,7 @@ class CollectorService:
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--disable-gpu")
-            options.add_argument("--window-size=800,600")
+            options.add_argument("--window-size=1000,800")
             service = ChromeService(ChromeDriverManager().install())
             return webdriver.Chrome(service=service, options=options)
 
@@ -166,17 +224,19 @@ class CollectorService:
         driver = CollectorService._get_driver()
         wait = WebDriverWait(driver, 10)
 
+        all_results = []
+
         try:
             driver.get(url)
 
-            # 1. iframe 로드 대기 후 전환
             iframe = wait.until(EC.presence_of_element_located((By.TAG_NAME, "iframe")))
             driver.switch_to.frame(iframe)
-
-            # 2. iframe 내부 요소 대기
             wait.until(EC.visibility_of_element_located((By.ID, "btn_query")))
 
             dates.sort(reverse=True)
+
+            prev_city = None
+            prev_gender = None
 
             for city, gender in product(cities, genders):
                 print(f"\n=== {city.value} / {gender.value} 수집 시작 ===")
@@ -191,8 +251,7 @@ class CollectorService:
                         day=target_date.day,
                     )
                     CollectorService._dismiss_alert(driver)
-
-                    time.sleep(1)
+                    time.sleep(0.3)
 
                     # 종료일 설정
                     CollectorService._set_date(
@@ -204,11 +263,15 @@ class CollectorService:
                     )
                     CollectorService._dismiss_alert(driver)
 
-                    # 시도 선택 (이전 선택 초기화 후 새로 선택)
-                    CollectorService._reset_and_set_city(driver, city.value)
+                    # 도시가 바뀔 때만 재설정
+                    if city != prev_city:
+                        CollectorService._reset_and_set_city(driver, city.value)
+                        prev_city = city
 
-                    # 성별 선택 (이전 선택 초기화 후 새로 선택)
-                    CollectorService._reset_and_set_gender(driver, gender.value)
+                    # 성별이 바뀔 때만 재설정
+                    if gender != prev_gender:
+                        CollectorService._reset_and_set_gender(driver, gender.value)
+                        prev_gender = gender
 
                     # 검색 클릭
                     driver.find_element(By.ID, "btn_query").click()
@@ -224,47 +287,90 @@ class CollectorService:
                     except:
                         pass
 
-                    time.sleep(1)
+                    time.sleep(0.5)
 
                     # 데이터 없는 경우
                     if "조회된 데이터가 없습니다" in driver.page_source:
                         print(f"  {target_date} - 조회 결과 없음 (정상)")
+                        save_empty_crawl_log(target_date, city.value, gender.value)
                         continue
 
-                    # 데이터 추출
-                    rows = driver.find_elements(By.CSS_SELECTOR, ".GMDataRow")
+                    # 그리드 데이터 직접 추출
+                    grid_data = driver.execute_script("""
+                        var grid = Grids[0];
+                        if (!grid) return null;
+                        
+                        var result = [];
+                        var rows = grid.Rows;
+                        
+                        for (var key in rows) {
+                            if (key === 'Header' || key === 'SumRow') continue;
+                            var row = rows[key];
+                            if (!row || !row.C2) continue;
+                            
+                            var name = row.C2;
+                            var count = row.C4;
+                            
+                            if (name && name !== '합계') {
+                                result.push({
+                                    rank: row.C1 || '',
+                                    name: name,
+                                    count: String(count || '0')
+                                });
+                            }
+                        }
+                        
+                        return {total: result.length, data: result};
+                    """)
 
-                    data = []
-                    for row in rows:
-                        cells = row.find_elements(
-                            By.CSS_SELECTOR, "td[class*='GMCell']"
-                        )
-                        if len(cells) >= 4:
-                            rank = cells[0].text.strip()
-                            name = cells[1].text.strip()
-
-                            if rank == "합계" or not name:
+                    # 그리드 방식 실패 시 DOM 파싱으로 폴백
+                    if not grid_data or not grid_data.get("data"):
+                        rows = driver.find_elements(By.CSS_SELECTOR, ".GMDataRow")
+                        data = []
+                        for row in rows:
+                            cells = row.find_elements(
+                                By.CSS_SELECTOR, "td[class*='GMCell']"
+                            )
+                            if len(cells) >= 4:
+                                rank = cells[0].text.strip()
+                                name = cells[1].text.strip()
+                                if rank == "합계" or not name:
+                                    continue
+                                data.append(
+                                    {
+                                        "name": re.sub(r"\(.*?\)", "", name).strip(),
+                                        "count": cells[3].text.strip(),
+                                    }
+                                )
+                    else:
+                        data = []
+                        for item in grid_data["data"]:
+                            name = item["name"].strip()
+                            if not name:
                                 continue
-
                             data.append(
                                 {
                                     "name": re.sub(r"\(.*?\)", "", name).strip(),
-                                    "count": cells[3].text.strip(),
+                                    "count": item["count"].strip()
+                                    if item["count"]
+                                    else "0",
                                 }
                             )
 
-                    result = {
-                        "date": str(target_date),
-                        "city": city.value,
-                        "gender": gender.value,
-                        "data": data,
-                        "check": {
-                            "is_success": True,
-                            "has_result": len(data) > 0,
-                        },
-                    }
+                    # all_results에 추가
+                    for item in data:
+                        all_results.append(
+                            {
+                                "name": item["name"],
+                                "count": item["count"],
+                                "city": city.value,
+                                "gender": gender.value,
+                                "record_date": target_date,
+                            }
+                        )
 
-                    print(f"  {target_date} - {len(data)}건 수집")
+                    total = sum(int(item["count"]) for item in data if item["count"])
+                    print(f"  {target_date} - {len(data)}개 이름, 총 {total}명 수집")
 
         except Exception as e:
             print(f"에러 발생: {type(e).__name__}: {e}")
@@ -273,6 +379,11 @@ class CollectorService:
             traceback.print_exc()
         finally:
             driver.quit()
+
+        # 전체 수집 완료 후 한 번에 저장
+        if all_results:
+            save_crawl_results(all_results)
+            print(f"\n=== 총 {len(all_results)}건 DB 저장 완료 ===")
 
     @staticmethod
     async def crawl(
@@ -294,3 +405,17 @@ class CollectorService:
         return {
             "message": f"{len(cities)}개 도시 x {len(genders)}개 성별 x {len(dates)}일 수집 완료"
         }
+
+    @staticmethod
+    def run_crawl(
+        dates: list[date],
+        cities: list[CityEnum] | None = None,
+        genders: list[GenderEnum] | None = None,
+    ):
+        """BackgroundTask용 동기 메서드"""
+        if cities is None:
+            cities = [city for city in CityEnum if "구)" not in city.value]
+        if genders is None:
+            genders = list(GenderEnum)
+
+        CollectorService._sync_crawl(dates, cities, genders)

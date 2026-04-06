@@ -1,28 +1,30 @@
+from __future__ import annotations
+
+from datetime import datetime
 from typing import TYPE_CHECKING
 
+from database import Base
 from sqlalchemy import Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from database import Base
-
-from .utils import created_at, updated_at
-
 if TYPE_CHECKING:
-    from .record import Record
+    from models.record import Record
 
 
 class Name(Base):
     __tablename__ = "names"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False, comment="이름 항목")
-    count: Mapped[int] = mapped_column(Integer, nullable=False, comment="건수")
-
-    created_at: Mapped[created_at]
-    updated_at: Mapped[updated_at]
-
-    # 연결관계
-    records: Mapped[list["Record"]] = relationship(
-        "Record",
-        back_populates="name",
+    name: Mapped[str] = mapped_column(
+        String(255), nullable=False, unique=True, comment="이름"
     )
+    created_at: Mapped[datetime] = mapped_column(default=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(
+        default=datetime.now, onupdate=datetime.now
+    )
+
+    # 관계
+    records: Mapped[list[Record]] = relationship("Record", back_populates="name")
+
+    def __repr__(self) -> str:
+        return f"<Name(id={self.id}, name={self.name})>"

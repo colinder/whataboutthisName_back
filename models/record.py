@@ -1,34 +1,41 @@
-# models/stat.py
-import uuid
-from datetime import date
+from __future__ import annotations
 
-from sqlalchemy import Date, ForeignKey, Integer, String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy_utils import UUIDType
+from datetime import datetime
+from typing import TYPE_CHECKING
 
 from database import Base
-from models.name import Name
+from sqlalchemy import ForeignKey, Integer
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .utils import created_at, updated_at
+if TYPE_CHECKING:
+    from models.crawl_log import CrawlLog
+    from models.name import Name
 
 
 class Record(Base):
     __tablename__ = "records"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name_id: Mapped[UUIDType] = mapped_column(
-        UUIDType, ForeignKey("names.id"), nullable=False, comment="이름 FK"
+    crawl_log_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("crawl_logs.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="크롤링 로그 FK",
     )
-    city: Mapped[str] = mapped_column(String(255), nullable=False, comment="도시")
-    record_date: Mapped[date] = mapped_column(Date, nullable=False, comment="기록일자")
-
-    gender: Mapped[str] = mapped_column(String(255), nullable=False, comment="성별")
+    name_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("names.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="이름 FK",
+    )
     count: Mapped[int] = mapped_column(
-        Integer, nullable=False, comment="성별 전체 건수"
+        Integer, nullable=False, default=0, comment="출생 건수"
     )
+    created_at: Mapped[datetime] = mapped_column(default=datetime.now)
 
-    created_at: Mapped[created_at]
-    updated_at: Mapped[updated_at]
+    # 관계
+    crawl_log: Mapped[CrawlLog] = relationship("CrawlLog", back_populates="records")
+    name: Mapped[Name] = relationship("Name", back_populates="records")
 
-    # 연결관계
-    name: Mapped["Name"] = relationship("Name", back_populates="records")
+    def __repr__(self) -> str:
+        return f"<Record(id={self.id}, crawl_log_id={self.crawl_log_id}, name_id={self.name_id}, count={self.count})>"
