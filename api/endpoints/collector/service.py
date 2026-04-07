@@ -164,23 +164,22 @@ class CollectorService:
 
     @staticmethod
     def _get_driver() -> webdriver.Chrome:
-        if platform.system() == "Windows":
-            options = EdgeOptions()
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--disable-gpu")
-            options.add_argument("--window-size=1920,1080")
-            service = EdgeService(EdgeChromiumDriverManager().install())
-            return webdriver.Edge(service=service, options=options)
+        options = ChromeOptions()
+        options.add_argument("--headless=new")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--window-size=1920,1080")
+
+        if platform.system() == "Linux":
+            # Docker 환경
+            options.binary_location = "/usr/bin/chromium"
+            service = ChromeService(executable_path="/usr/bin/chromedriver")
         else:
-            options = ChromeOptions()
-            # options.add_argument("--headless")
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--disable-gpu")
-            options.add_argument("--window-size=1000,800")
+            # 로컬 개발 (Mac/Windows)
             service = ChromeService(ChromeDriverManager().install())
-            return webdriver.Chrome(service=service, options=options)
+
+        return webdriver.Chrome(service=service, options=options)
 
     @staticmethod
     def _reset_and_set_city(driver, city_name: str):
