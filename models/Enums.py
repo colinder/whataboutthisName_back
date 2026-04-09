@@ -3,6 +3,8 @@ import enum
 
 
 class CityEnum(str, enum.Enum):
+    ALL = "전체"
+
     # 특별시/광역시/특별자치시
     SEOUL = "서울특별시"
     BUSAN = "부산광역시"
@@ -35,5 +37,6 @@ class CityEnum(str, enum.Enum):
 
 
 class GenderEnum(str, enum.Enum):
+    ALL = "전체"
     MALE = "남자"
     FEMALE = "여자"

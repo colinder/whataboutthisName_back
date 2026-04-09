@@ -4,7 +4,6 @@ import re
 import time
 from datetime import date
 from itertools import product
-from pathlib import Path
 
 from database import SessionLocal
 from models.Enums import CityEnum, GenderEnum
@@ -14,18 +13,38 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
-from selenium.webdriver.edge.options import Options as EdgeOptions
-from selenium.webdriver.edge.service import Service as EdgeService
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from sqlalchemy import select
 from webdriver_manager.chrome import ChromeDriverManager
-from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
 from .db_service import save_crawl_results, save_empty_crawl_log
 
 
 class CollectorService:
+    @staticmethod
+    def _dismiss_alert(driver):
+        """팝업 + 오버레이 닫기"""
+        try:
+            confirm_btn = WebDriverWait(driver, 2).until(
+                EC.element_to_be_clickable((By.ID, "apprise-btn-confirm"))
+            )
+            confirm_btn.click()
+            time.sleep(0.3)
+        except:
+            pass
+
+        # 오버레이가 남아있으면 강제 제거
+        try:
+            driver.execute_script("""
+                var overlay = document.querySelector('.apprise-overlay');
+                if (overlay) overlay.style.display = 'none';
+                var apprise = document.querySelector('.apprise');
+                if (apprise) apprise.style.display = 'none';
+            """)
+        except:
+            pass
+
     @staticmethod
     def _save_to_db(results: list[dict]):
         db = SessionLocal()
@@ -81,18 +100,6 @@ class CollectorService:
             print(f"DB 저장 실패: {e}")
         finally:
             db.close()
-
-    @staticmethod
-    def _dismiss_alert(driver):
-        """30일 초과 팝업이 뜨면 확인 클릭"""
-        try:
-            confirm_btn = WebDriverWait(driver, 2).until(
-                EC.element_to_be_clickable((By.ID, "apprise-btn-confirm"))
-            )
-            confirm_btn.click()
-            time.sleep(0.3)
-        except:
-            pass
 
     @staticmethod
     def _set_gender(driver, id: str, gender_name: str):
@@ -165,11 +172,11 @@ class CollectorService:
     @staticmethod
     def _get_driver() -> webdriver.Chrome:
         options = ChromeOptions()
-        options.add_argument("--headless=new")
+        # options.add_argument("--headless=new")
+        options.add_argument("--window-size=1000,900")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
-        options.add_argument("--window-size=1920,1080")
 
         if platform.system() == "Linux":
             # Docker 환경
@@ -184,18 +191,36 @@ class CollectorService:
     @staticmethod
     def _reset_and_set_city(driver, city_name: str):
         """이전 시도 선택 초기화 후 새로 선택"""
-        driver.execute_script("""
-            var key = Object.keys(window).find(k => k.startsWith('param_SidoCd_'));
-            var obj = window[key];
-            obj.SetSelectText('');
-        """)
-        time.sleep(0.3)
+        if city_name == "전체":
+            # 모든 도시 체크
+            driver.execute_script("""
+                var key = Object.keys(window).find(k => k.startsWith('param_SidoCd_'));
+                var obj = window[key];
+                var data = obj.viewport.options.data;
+                
+                for (var i = 0; i < data.length; i++) {
+                    obj.SetItemCheck(i, true);
+                }
+            """)
+            time.sleep(0.5)
+        else:
+            # 전체 해제 후 단일 도시 선택
+            driver.execute_script("""
+                var key = Object.keys(window).find(k => k.startsWith('param_SidoCd_'));
+                var obj = window[key];
+                var data = obj.viewport.options.data;
+                
+                for (var i = 0; i < data.length; i++) {
+                    obj.SetItemCheck(i, false);
+                }
+            """)
+            time.sleep(0.3)
 
-        CollectorService._set_city(
-            driver,
-            id="param_SidoCd_1774502844314_selectedContainer",
-            city_name=city_name,
-        )
+            CollectorService._set_city(
+                driver,
+                id="param_SidoCd_1774502844314_selectedContainer",
+                city_name=city_name,
+            )
 
     @staticmethod
     def _reset_and_set_gender(driver, gender_name: str):
@@ -270,6 +295,9 @@ class CollectorService:
                     # 성별이 바뀔 때만 재설정
                     if gender != prev_gender:
                         CollectorService._reset_and_set_gender(driver, gender.value)
+                        # 전체 선택 시 팝업 처리
+                        if gender.value == "전체":
+                            CollectorService._dismiss_alert(driver)
                         prev_gender = gender
 
                     # 검색 클릭
@@ -391,7 +419,8 @@ class CollectorService:
         genders: list[GenderEnum] | None = None,
     ):
         if cities is None:
-            cities = [city for city in CityEnum if "구)" not in city.value]
+            # cities = [city for city in CityEnum if "구)" not in city.value]
+            cities = list(CityEnum)
         if genders is None:
             genders = list(GenderEnum)
 
@@ -413,7 +442,7 @@ class CollectorService:
     ):
         """BackgroundTask용 동기 메서드"""
         if cities is None:
-            cities = [city for city in CityEnum if "구)" not in city.value]
+            cities = list(CityEnum)
         if genders is None:
             genders = list(GenderEnum)
 
