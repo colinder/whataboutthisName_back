@@ -29,8 +29,13 @@ def save_crawl_results(all_results: list[dict]):
         ...
     ]
     """
+
     if not all_results:
         return
+
+    # 저장할 데이터 출력
+    print("\n========== DB 저장 데이터 확인 ==========")
+    print(f"총 {len(all_results)}건")
 
     db = SessionLocal()
     try:
@@ -41,6 +46,16 @@ def save_crawl_results(all_results: list[dict]):
             if key not in log_groups:
                 log_groups[key] = []
             log_groups[key].append(item)
+
+        # 저장되는 데이터 출력
+        for (record_date, city, gender), items in log_groups.items():
+            total = sum(int(item["count"]) for item in items if item["count"])
+            print(f"\n[crawl_log] {record_date} / {city} / {gender}")
+            print(f"  이름 수: {len(items)}개, 총 건수: {total}")
+            for item in items:
+                print(f"  [record] {item['name']:10s} → {item['count']}건")
+
+        print("==========================================\n")
 
         # 2. 이름 캐시: 전체 이름을 한 번에 처리
         all_names = list(set(item["name"] for item in all_results))

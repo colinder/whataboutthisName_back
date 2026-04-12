@@ -244,6 +244,12 @@ class CollectorService:
         cities: list[CityEnum],
         genders: list[GenderEnum],
     ):
+        # 시간 종합
+        from datetime import datetime
+
+        start_time = datetime.now()
+        print(f"\n>>> 크롤링 시작: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+
         url = "https://stfamily.scourt.go.kr/st/StFrrStatcsView.do?pgmId=090000000025"
         driver = CollectorService._get_driver()
         wait = WebDriverWait(driver, 10)
@@ -406,6 +412,13 @@ class CollectorService:
             traceback.print_exc()
         finally:
             driver.quit()
+
+        # 진행시간 출력
+        end_time = datetime.now()
+        elapsed = end_time - start_time
+        minutes = elapsed.total_seconds() / 60
+        print(f"\n>>> 크롤링 종료: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f">>> 소요 시간: {int(minutes)}분 {int(elapsed.total_seconds() % 60)}초")
 
         # 전체 수집 완료 후 한 번에 저장
         if all_results:

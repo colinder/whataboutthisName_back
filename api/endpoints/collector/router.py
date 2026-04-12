@@ -30,7 +30,7 @@ async def crawl(
     for part in body.target_date:
         all_dates.extend(parse_date_input(part.strip()))
     all_dates = sorted(set(all_dates))
-    print(all_dates)
+
     background_tasks.add_task(
         CollectorService.run_crawl,
         dates=all_dates,
