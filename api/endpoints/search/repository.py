@@ -1,13 +1,20 @@
 from models.crawl_log import CrawlLog
 from models.name import Name
 from models.record import Record
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 
 class SearchRepository:
     def __init__(self, db: Session):
         self.db = db
+
+    def _apply_city_filter(self, stmt, city: str | None):
+        if not city or city == "전체":
+            stmt = stmt.where(CrawlLog.city == "전체")
+        else:
+            stmt = stmt.where(CrawlLog.city == city)
+        return stmt
 
     def _apply_gender_filter(self, stmt, gender: str | None):
         """공통 성별 필터"""
@@ -33,12 +40,14 @@ class SearchRepository:
             .where(CrawlLog.record_date == date)
         )
 
-        if city:
-            stmt = stmt.where(CrawlLog.city == city)
-
+        stmt = self._apply_city_filter(stmt, city)
         stmt = self._apply_gender_filter(stmt, gender)
 
-        stmt = stmt.group_by(Name.name).order_by(func.sum(Record.count).desc())
+        stmt = stmt.group_by(Name.name).order_by(
+            case((Name.name == "기타", 1), else_=0),
+            func.sum(Record.count).desc(),
+            Name.name,
+        )
 
         return self.db.execute(stmt).all()
 
@@ -86,9 +95,7 @@ class SearchRepository:
             .where(name_filter)
         )
 
-        if city:
-            stmt = stmt.where(CrawlLog.city == city)
-
+        stmt = self._apply_city_filter(stmt, city)
         stmt = self._apply_gender_filter(stmt, gender)
 
         stmt = (
@@ -112,9 +119,7 @@ class SearchRepository:
             .where(Name.name.ilike(f"%{name}%"))
         )
 
-        if city:
-            stmt = stmt.where(CrawlLog.city == city)
-
+        stmt = self._apply_city_filter(stmt, city)
         stmt = self._apply_gender_filter(stmt, gender)
 
         stmt = (
@@ -155,10 +160,10 @@ class SearchRepository:
 
         if date:
             stmt = stmt.where(CrawlLog.record_date == date)
-        if city:
-            stmt = stmt.where(CrawlLog.city == city)
-        if gender:
-            stmt = stmt.where(CrawlLog.gender == gender)
+
+        stmt = self._apply_city_filter(stmt, city)
+
+        stmt = self._apply_gender_filter(stmt, gender)
 
         stmt = (
             stmt.group_by(Name.name)
@@ -185,10 +190,8 @@ class SearchRepository:
             .where(Record.name_id == name_obj.id)
         )
 
-        if city:
-            stmt = stmt.where(CrawlLog.city == city)
-        if gender:
-            stmt = stmt.where(CrawlLog.gender == gender)
+        stmt = self._apply_city_filter(stmt, city)
+        stmt = self._apply_gender_filter(stmt, gender)
 
         stmt = stmt.group_by(CrawlLog.record_date).order_by(CrawlLog.record_date)
 
