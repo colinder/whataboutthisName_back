@@ -54,17 +54,6 @@ def statistics(
     return service.statistics(year, month, gender, limit)
 
 
-# @search_router.get("/daily")
-# def daily_statistics(
-#     date: str = Query(..., description="날짜 (YYYY-MM-DD)"),
-#     city: str | None = Query(None, description="도시"),
-#     gender: str | None = Query(None, description="성별 (전체/남자/여자)"),
-#     service: SearchService = Depends(get_service),
-# ):
-#     """일별 통계"""
-#     return service.daily_statistics(date, city, gender)
-
-
 @search_router.get("/crawl-status")
 def crawl_status(
     year: int = Query(..., description="연도"),
