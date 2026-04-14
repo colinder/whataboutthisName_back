@@ -223,32 +223,6 @@ class SearchService:
             "data": data,
         }
 
-    def daily_statistics(
-        self,
-        date: str,
-        city: str | None,
-        gender: str | None,
-    ) -> dict:
-        results = self.repo.get_daily_statistics(date, city, gender)
-
-        data = [
-            {
-                "rank": i + 1,
-                "name": row.name,
-                "count": int(row.total_count),
-            }
-            for i, row in enumerate(results)
-        ]
-
-        return {
-            "date": date,
-            "city": city or "전체",
-            "gender": gender or "전체",
-            "count": len(data),
-            "total": sum(item["count"] for item in data),
-            "data": data,
-        }
-
     def search(self, q: str, city: str | None, gender: str | None, limit: int) -> dict:
         is_pattern = "*" in q or any(c in CHOSUNG for c in q)
 
