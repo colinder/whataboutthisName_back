@@ -53,6 +53,176 @@ class SearchService:
     def __init__(self, db: Session):
         self.repo = SearchRepository(db)
 
+    def name_gender_stats(self, name: str) -> dict:
+        results = self.repo.get_name_gender_stats(name)
+
+        if not results:
+            return {"name": name, "found": False, "data": []}
+
+        data = []
+        for row in results:
+            label = "남아" if row.gender == "남자" else "여아"
+            data.append(
+                {
+                    "name": label,
+                    "value": int(row.total_count),
+                }
+            )
+
+        # 남아 또는 여아 데이터가 없으면 0으로 추가
+        labels = [d["name"] for d in data]
+        if "남아" not in labels:
+            data.insert(0, {"name": "남아", "value": 0})
+        if "여아" not in labels:
+            data.append({"name": "여아", "value": 0})
+
+        # 남아가 먼저 오도록 정렬
+        data.sort(key=lambda x: 0 if x["name"] == "남아" else 1)
+
+        return {
+            "name": name,
+            "found": True,
+            "data": data,
+        }
+
+    def name_yearly_trend(self, name: str) -> dict:
+        """이름의 연도별 추이 - 남자+여자 합산으로 전체 계산"""
+        male_data = self.repo.get_trend(name, None, "남자") or []
+        female_data = self.repo.get_trend(name, None, "여자") or []
+
+        if not male_data and not female_data:
+            return {"name": name, "found": False, "data": []}
+
+        # 연도별 합산
+        def aggregate_by_year(data):
+            year_map = {}
+            for row in data:
+                year = str(row.record_date)[:4]
+                year_map[year] = year_map.get(year, 0) + int(row.daily_count)
+            return year_map
+
+        male_map = aggregate_by_year(male_data)
+        female_map = aggregate_by_year(female_data)
+
+        all_years = sorted(set(list(male_map.keys()) + list(female_map.keys())))
+
+        data = []
+        for year in all_years:
+            male_count = male_map.get(year, 0)
+            female_count = female_map.get(year, 0)
+
+            data.append(
+                {
+                    "year": int(year),
+                    "전체": male_count + female_count,
+                    "남아": male_count,
+                    "여아": female_count,
+                }
+            )
+
+        return {
+            "name": name,
+            "found": True,
+            "data": data,
+        }
+
+    def name_yearly_rank(self, name: str) -> dict:
+        rank_data = self.repo.get_name_yearly_rank(name)
+        total_data = self.repo.get_yearly_total_by_gender()
+
+        if not rank_data:
+            return {"name": name, "found": False, "data": []}
+
+        # 연도별 전체 출생아 수
+        total_map = {}
+        for row in total_data:
+            year = int(row.year)
+            if year not in total_map:
+                total_map[year] = {}
+            total_map[year][row.gender] = int(row.total_count)
+
+        # 연도별 순위/건수
+        rank_map = {}
+        for row in rank_data:
+            year = int(row.year)
+            if year not in rank_map:
+                rank_map[year] = {}
+            rank_map[year][row.gender] = {
+                "rank": int(row.rank),
+                "count": int(row.total_count),
+            }
+
+        all_years = sorted(
+            set(list(total_map.keys()) + list(rank_map.keys())),
+            reverse=True,
+        )
+
+        data = []
+        for year in all_years:
+            male = rank_map.get(year, {}).get("남자", {"rank": None, "count": 0})
+            female = rank_map.get(year, {}).get("여자", {"rank": None, "count": 0})
+
+            data.append(
+                {
+                    "year": year,
+                    "male": {
+                        "total": total_map.get(year, {}).get("남자", 0),
+                        "rank": male["rank"],
+                        "count": male["count"],
+                    },
+                    "female": {
+                        "total": total_map.get(year, {}).get("여자", 0),
+                        "rank": female["rank"],
+                        "count": female["count"],
+                    },
+                }
+            )
+
+        return {
+            "name": name,
+            "found": True,
+            "data": data,
+        }
+
+    def crawl_status(self, year: int) -> dict:
+        results = self.repo.get_crawl_status_by_year(year)
+
+        # 전체 도시 × 성별 조합 수
+        from models.Enums import CityEnum, GenderEnum
+
+        expected = len(list(CityEnum)) * len(list(GenderEnum))
+
+        data = []
+        for row in results:
+            date_str = str(row.record_date)
+            count = row.log_count
+            # 수집 완료 비율에 따라 level 결정
+            if count >= expected and row.all_success:
+                level = 4  # 완전 수집
+            elif count >= expected * 0.7:
+                level = 3
+            elif count >= expected * 0.3:
+                level = 2
+            elif count > 0:
+                level = 1
+            else:
+                level = 0
+
+            data.append(
+                {
+                    "date": date_str,
+                    "count": count,
+                    "level": level,
+                }
+            )
+
+        return {
+            "year": year,
+            "expected_per_day": expected,
+            "total_days": len(data),
+            "data": data,
+        }
+
     def daily_statistics(
         self,
         date: str,
@@ -154,15 +324,17 @@ class SearchService:
         gender: str | None,
         limit: int,
     ) -> dict:
-        years, months, results = self.repo.get_statistics_with_filters(
+        years, months, _ = self.repo.get_statistics_with_filters(
             year, month, gender, limit
         )
+
+        results = self.repo.get_statistics_combined(year, month, gender, limit)
 
         return {
             "filters": {
                 "year": year,
                 "month": month,
-                "gender": gender,
+                "gender": gender or "전체",
                 "options": {
                     "years": years,
                     "months": months,
@@ -174,9 +346,32 @@ class SearchService:
                 {
                     "rank": i + 1,
                     "name": row.name,
-                    "gender": row.gender,
-                    "count": int(row.total_count),
+                    "total_count": int(row.total_count),
                 }
                 for i, row in enumerate(results)
             ],
+        }
+
+    def yearly_statistics(self) -> dict:
+        results = self.repo.get_yearly_statistics()
+
+        # 연도별로 그룹핑
+        year_map = {}
+        for row in results:
+            year = int(row.year)
+            if year not in year_map:
+                year_map[year] = {"year": year, "전체": 0, "남아": 0, "여아": 0}
+
+            if row.gender == "전체":
+                year_map[year]["전체"] = int(row.total_count)
+            elif row.gender == "남자":
+                year_map[year]["남아"] = int(row.total_count)
+            elif row.gender == "여자":
+                year_map[year]["여아"] = int(row.total_count)
+
+        data = sorted(year_map.values(), key=lambda x: x["year"])
+
+        return {
+            "count": len(data),
+            "data": data,
         }

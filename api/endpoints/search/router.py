@@ -54,12 +54,56 @@ def statistics(
     return service.statistics(year, month, gender, limit)
 
 
-@search_router.get("/daily")
-def daily_statistics(
-    date: str = Query(..., description="날짜 (YYYY-MM-DD)"),
-    city: str | None = Query(None, description="도시"),
-    gender: str | None = Query(None, description="성별 (전체/남자/여자)"),
+# @search_router.get("/daily")
+# def daily_statistics(
+#     date: str = Query(..., description="날짜 (YYYY-MM-DD)"),
+#     city: str | None = Query(None, description="도시"),
+#     gender: str | None = Query(None, description="성별 (전체/남자/여자)"),
+#     service: SearchService = Depends(get_service),
+# ):
+#     """일별 통계"""
+#     return service.daily_statistics(date, city, gender)
+
+
+@search_router.get("/crawl-status")
+def crawl_status(
+    year: int = Query(..., description="연도"),
     service: SearchService = Depends(get_service),
 ):
-    """일별 통계"""
-    return service.daily_statistics(date, city, gender)
+    """연도별 수집 현황"""
+    return service.crawl_status(year)
+
+
+@search_router.get("/yearly")
+def yearly_statistics(
+    service: SearchService = Depends(get_service),
+):
+    """연도별 출생아 수 추이"""
+    return service.yearly_statistics()
+
+
+@search_router.get("/name-rank/{name}")
+def name_yearly_rank(
+    name: str,
+    service: SearchService = Depends(get_service),
+):
+    """특정 이름의 연도별 순위 및 동명이인 수"""
+    return service.name_yearly_rank(name)
+
+
+@search_router.get("/name-trend/{name}")
+def name_yearly_trend(
+    name: str,
+    service: SearchService = Depends(get_service),
+):
+    """특정 이름의 연도별 추이"""
+    return service.name_yearly_trend(name)
+
+
+@search_router.get("/name-gender/{name}")
+def name_gender_stats(
+    name: str,
+    service: SearchService = Depends(get_service),
+):
+    """특정 이름의 성별 분포"""
+    return service.name_gender_stats(name)
