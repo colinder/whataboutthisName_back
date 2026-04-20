@@ -1,8 +1,8 @@
-from database import get_db
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from api.endpoints.search.service import SearchService
+from database import get_db
 
 search_router = APIRouter()
 
@@ -12,14 +12,38 @@ def get_service(db: Session = Depends(get_db)) -> SearchService:
 
 
 @search_router.get("")
-def search(
-    q: str = Query(..., description="검색어 (이름, 패턴, 초성)"),
-    city: str | None = Query(None),
-    gender: str | None = Query(None),
-    limit: int = Query(50, ge=1, le=200),
+async def search_names(
+    q: str = Query(..., min_length=1, description="검색어"),
     service: SearchService = Depends(get_service),
 ):
-    return service.search(q, city, gender, limit)
+    """
+    이름 검색
+
+    지원 패턴:
+    - 글자 수: *, **, ***
+    - 초성: ㄷ, ㅈㄱ, ㅅㅎㅁ
+    - 와일드카드: ㄷ*, *ㄴ*, *ㅅ**
+    - 일반: 민준, 서연
+    """
+    data = service.search_names(q)
+
+    return {
+        "query": q,
+        "type": data["type"],
+        "count": len(data["results"]),
+        "results": data["results"],
+    }
+
+
+# @search_router.get("")
+# def search(
+#     q: str = Query(..., description="검색어 (이름, 패턴, 초성)"),
+#     city: str | None = Query(None),
+#     gender: str | None = Query(None),
+#     limit: int = Query(50, ge=1, le=200),
+#     service: SearchService = Depends(get_service),
+# ):
+#     return service.search(q, city, gender, limit)
 
 
 @search_router.get("/ranking")
@@ -96,3 +120,10 @@ def name_gender_stats(
 ):
     """특정 이름의 성별 분포"""
     return service.name_gender_stats(name)
+
+
+@search_router.get("/overview")
+async def get_data_overview(
+    service: SearchService = Depends(get_service),
+):
+    return service.get_data_overview()

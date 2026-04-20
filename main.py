@@ -1,18 +1,22 @@
-from api import api_router
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from api import api_router
+from config import settings
 
 load_dotenv()
 
 
 app = FastAPI()
 
-origins = ["*"]
+
+allow_origins = settings.allowed_origins_list
+
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

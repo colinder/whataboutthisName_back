@@ -1,19 +1,66 @@
-__pycache__
+# Python 캐시 및 바이너리
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.pyd
 .Python
+
+# 가상환경
 env/
 venv/
+ENV/
+.venv/
+
+# 환경 변수 파일
 .env
 .env.*
 !.env.production
-.git
+
+# 버전 관리
+.git/
 .gitignore
-.vscode
-.idea
+.github/
+
+# IDE 및 에디터
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 문서 및 기타
+*.md
+README.md
+LICENSE
+.editorconfig
+
+# 로그 및 임시 파일
 *.log
+*.tmp
 .DS_Store
-node_modules
+Thumbs.db
+
+# Node.js (프론트엔드 관련)
+node_modules/
+package-lock.json
+yarn.lock
+
+# 로컬 데이터 및 테스트
 neon/
+tests/
+test_*.py
+*_test.py
+
+# Docker 관련
 docker-compose.yml
+docker-compose.*.yml
+Dockerfile.dev
+
+# 기타
+*.sqlite
+*.db
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/

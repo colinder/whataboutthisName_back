@@ -1,11 +1,11 @@
 import calendar
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
-from models.name import Name
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from api.endpoints.search.repository import SearchRepository
+from models.name import Name
 
 
 def parse_date_input(date_str: str) -> list[date]:
@@ -130,9 +130,6 @@ class SearchService:
         rank_data = self.repo.get_name_yearly_rank(name)
         total_data = self.repo.get_yearly_total_by_gender()
 
-        if not rank_data:
-            return {"name": name, "found": False, "data": []}
-
         # 연도별 전체 출생아 수
         total_map = {}
         for row in total_data:
@@ -140,6 +137,39 @@ class SearchService:
             if year not in total_map:
                 total_map[year] = {}
             total_map[year][row.gender] = int(row.total_count)
+
+        # 데이터가 없어도 found=True로 반환 (빈 테이블 표시)
+        if not rank_data:
+            # 현재 연도 가져오기
+            current_year = datetime.now().year
+
+            # 2008년부터 현재 연도까지 생성
+            all_years = list(range(2008, current_year + 1))
+            all_years.reverse()  # 최신 연도가 위로
+
+            data = []
+            for year in all_years:
+                data.append(
+                    {
+                        "year": year,
+                        "male": {
+                            "total": total_map.get(year, {}).get("남자", 0),
+                            "rank": None,  # - 로 표시됨
+                            "count": 0,
+                        },
+                        "female": {
+                            "total": total_map.get(year, {}).get("여자", 0),
+                            "rank": None,  # - 로 표시됨
+                            "count": 0,
+                        },
+                    }
+                )
+
+            return {
+                "name": name,
+                "found": True,  # True로 변경 (테이블은 보여줌)
+                "data": data,
+            }
 
         # 연도별 순위/건수
         rank_map = {}
@@ -152,10 +182,13 @@ class SearchService:
                 "count": int(row.total_count),
             }
 
-        all_years = sorted(
-            set(list(total_map.keys()) + list(rank_map.keys())),
-            reverse=True,
-        )
+        # 현재 연도 가져오기
+        current_year = datetime.now().year
+
+        # 2008년부터 현재 연도까지 모든 연도 생성
+        all_years_range = set(range(2008, current_year + 1))
+        existing_years = set(list(total_map.keys()) + list(rank_map.keys()))
+        all_years = sorted(all_years_range | existing_years, reverse=True)
 
         data = []
         for year in all_years:
@@ -349,3 +382,18 @@ class SearchService:
             "count": len(data),
             "data": data,
         }
+
+    def get_data_overview(self) -> dict:
+        """데이터 현황 조회"""
+        results = self.repo.get_data_overview()  # 또는 self.repository
+
+        return {
+            "total_records": results["total_records"],
+            "last_update_date": results["last_update_date"],
+            "total_male_count": results["total_male_count"],
+            "total_female_count": results["total_female_count"],
+        }
+
+    def search_names(self, query: str):
+        """이름 검색"""
+        return self.repo.search_names(query)

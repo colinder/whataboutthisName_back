@@ -1,13 +1,57 @@
+import re
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
 from models.crawl_log import CrawlLog
 from models.name import Name
 from models.record import Record
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
 
 
 class SearchRepository:
     def __init__(self, db: Session):
         self.db = db
+
+    def get_data_overview(self) -> dict:
+        """메인 화면 데이터 현황 조회"""
+
+        # 최근 크롤링 날짜
+        last_date_stmt = select(func.max(CrawlLog.record_date))
+        last_crawl = self.db.execute(last_date_stmt).scalar()
+
+        # 전체 (대법원 공식 값)
+        total_stmt = (
+            select(func.sum(Record.count))
+            .join(CrawlLog, Record.crawl_log_id == CrawlLog.id)
+            .where(CrawlLog.gender == "전체")
+            .where(CrawlLog.city == "전체")
+        )
+        total_records = self.db.execute(total_stmt).scalar() or 0
+
+        # 남아
+        male_stmt = (
+            select(func.sum(Record.count))
+            .join(CrawlLog, Record.crawl_log_id == CrawlLog.id)
+            .where(CrawlLog.gender == "남자")
+            .where(CrawlLog.city == "전체")
+        )
+        male_count = self.db.execute(male_stmt).scalar() or 0
+
+        # 여아
+        female_stmt = (
+            select(func.sum(Record.count))
+            .join(CrawlLog, Record.crawl_log_id == CrawlLog.id)
+            .where(CrawlLog.gender == "여자")
+            .where(CrawlLog.city == "전체")
+        )
+        female_count = self.db.execute(female_stmt).scalar() or 0
+
+        return {
+            "total_records": total_records,
+            "last_update_date": last_crawl.strftime("%Y.%m.%d") if last_crawl else None,
+            "total_male_count": male_count,
+            "total_female_count": female_count,
+        }
 
     def get_statistics_combined(
         self,
@@ -122,21 +166,24 @@ class SearchRepository:
         return self.db.execute(stmt).all()
 
     def get_yearly_total_by_gender(self):
-        """연도별/성별 전체 출생아 수 (기타 포함)"""
+        """
+        연도별 성별 전체 출생아 수
+
+        - city='전체', gender='남자/여자'만 집계
+        - 각 연도별로 한 번만 집계되도록 함
+        """
         stmt = (
             select(
                 func.extract("year", CrawlLog.record_date).label("year"),
                 CrawlLog.gender,
                 func.sum(Record.count).label("total_count"),
             )
-            .select_from(Record)
-            .join(CrawlLog, CrawlLog.id == Record.crawl_log_id)
-            .where(CrawlLog.city == "전체")
-            .group_by(
-                func.extract("year", CrawlLog.record_date),
-                CrawlLog.gender,
-            )
-            .order_by(func.extract("year", CrawlLog.record_date))
+            .join(Record, Record.crawl_log_id == CrawlLog.id)
+            .where(CrawlLog.city == "전체")  # 도시 중복 방지
+            .where(CrawlLog.gender.in_(["남자", "여자"]))  # 전체 제외
+            .where(CrawlLog.is_success.is_(True))  # 성공한 크롤링만
+            .group_by(func.extract("year", CrawlLog.record_date), CrawlLog.gender)
+            .order_by(func.extract("year", CrawlLog.record_date).desc())
         )
 
         return self.db.execute(stmt).all()
@@ -384,3 +431,116 @@ class SearchRepository:
 
         stmt = stmt.order_by(func.extract("month", CrawlLog.record_date))
         return [int(row.month) for row in self.db.execute(stmt).all()]
+
+    def search_names(self, query: str):
+        """
+        이름 검색 (패턴 지원)
+
+        - 글자 수: *, **, ***
+        - 초성: ㄱ, ㄴㄷ, ㅁㅂㅅ (자음만)
+        - 와일드카드: ㄷ*, *ㄴ*, *ㅅ**
+        - 일반 검색: 민준, 서연, 도 (완성된 한글)
+
+        반환값:
+        {
+            "type": "pattern" | "normal",
+            "results": [{"name": "민준"}, {"name": "민서"}, ...]
+        }
+        """
+
+        # 1. 글자 수 검색 (*, **, ***)
+        if re.fullmatch(r"\*+", query):
+            length = len(query)
+            stmt = (
+                select(Name.name)
+                .where(func.char_length(Name.name) == length)
+                .distinct()
+            )
+            results = self.db.execute(stmt).scalars().all()
+            return {"type": "pattern", "results": [{"name": name} for name in results]}
+
+        # 2. 초성 검색 또는 와일드카드 검색 (자음만 포함된 경우)
+        if self._is_chosung_or_wildcard(query):
+            pattern = self._convert_to_sql_pattern(query)
+
+            stmt = (
+                select(Name.name)
+                .where(Name.name.op("~")(pattern))  # PostgreSQL POSIX 정규식
+                .distinct()
+            )
+            results = self.db.execute(stmt).scalars().all()
+            return {"type": "pattern", "results": [{"name": name} for name in results]}
+
+        # 3. 일반 검색 (완성된 한글 포함)
+        stmt = select(Name.name).where(Name.name.like(f"%{query}%")).distinct()
+        results = self.db.execute(stmt).scalars().all()
+        return {"type": "normal", "results": [{"name": name} for name in results]}
+
+    def _is_chosung_or_wildcard(self, query: str) -> bool:
+        """
+        초성 또는 와일드카드 검색인지 확인
+
+        - ㄱ-ㅎ (자음만 있음) → True
+        - * 포함 → True
+        - 가-힣 (완성된 한글) → False
+        """
+        # 완성된 한글이 포함되어 있으면 일반 검색
+        if re.search(r"[가-힣]", query):
+            # 단, *가 포함되어 있으면 와일드카드 검색
+            if "*" in query:
+                return True
+            return False
+
+        # 자음(ㄱ-ㅎ) 또는 * 만 있으면 패턴 검색
+        return bool(re.search(r"[ㄱ-ㅎ*]", query))
+
+    def _convert_to_sql_pattern(self, query: str) -> str:
+        """
+        검색 쿼리를 PostgreSQL 정규식 패턴으로 변환
+
+        예시:
+        - ㄷ → ^[다-딯]
+        - ㅈㄱ → ^[자-짛][가-깋]
+        - ㄷ* → ^[다-딯].
+        - *ㄴ* → ^.[나-닣].
+        - *ㅅ** → ^..[사-싷]..
+        - 도* → ^도.  (완성된 한글 + 와일드카드)
+        """
+
+        # 초성 → 한글 범위 매핑
+        chosung_map = {
+            "ㄱ": "[가-깋]",
+            "ㄲ": "[까-낗]",
+            "ㄴ": "[나-닣]",
+            "ㄷ": "[다-딯]",
+            "ㄸ": "[따-띻]",
+            "ㄹ": "[라-맇]",
+            "ㅁ": "[마-밓]",
+            "ㅂ": "[바-빟]",
+            "ㅃ": "[빠-삫]",
+            "ㅅ": "[사-싷]",
+            "ㅆ": "[싸-앃]",
+            "ㅇ": "[아-잏]",
+            "ㅈ": "[자-짛]",
+            "ㅉ": "[짜-찧]",
+            "ㅊ": "[차-칳]",
+            "ㅋ": "[카-킿]",
+            "ㅌ": "[타-팋]",
+            "ㅍ": "[파-핗]",
+            "ㅎ": "[하-힣]",
+        }
+
+        pattern = "^"  # 시작
+
+        for char in query:
+            if char == "*":
+                pattern += "."  # 아무 글자 1개
+            elif char in chosung_map:
+                pattern += chosung_map[char]  # 초성 범위
+            else:
+                # 완성된 한글 또는 일반 문자
+                pattern += re.escape(char)
+
+        pattern += "$"  # 끝
+
+        return pattern
