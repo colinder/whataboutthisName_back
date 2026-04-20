@@ -1,1 +1,7 @@
-# .env
+*.py[cod]
+.vscode/
+drivers/
+__pycache__/
+*.pyc
+.env
+.git
