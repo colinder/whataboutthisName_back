@@ -20,7 +20,7 @@ steps:
       - 'push'
       - 'gcr.io/$PROJECT_ID/whataboutthisname-back:latest'
   
-  # 3. Cloud Run에 자동 배포 ← 이게 추가됨!
+  # 3. Cloud Run에 자동 배포
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -35,3 +35,7 @@ steps:
 images:
   - 'gcr.io/$PROJECT_ID/whataboutthisname-back:$COMMIT_SHA'
   - 'gcr.io/$PROJECT_ID/whataboutthisname-back:latest'
+
+# 로깅 옵션 추가 (여기가 핵심!)
+options:
+  logging: CLOUD_LOGGING_ONLY
