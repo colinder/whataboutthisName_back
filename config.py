@@ -42,41 +42,46 @@ class Settings(BaseSettings):
         if not origin:
             return False
 
-        # 1. 환경변수에 명시적으로 허용된 origin
-        if origin in self.allowed_origins_list:
-            return True
-
-        # 2. Vercel 프리뷰/배포 URL 패턴
-        # 예: https://whataboutthisname-{random}-selforofficial-{random}-projects.vercel.app
-        vercel_preview_pattern = re.compile(
-            r"^https://whataboutthisname-[a-z0-9]+-selforofficial-[a-z0-9]+-projects\.vercel\.app$"
-        )
-        if vercel_preview_pattern.match(origin):
-            return True
-
-        # 3. Vercel 프로덕션 URL
-        if origin in [
-            "https://whataboutthisname.vercel.app",
-            "https://www.whataboutthisname.vercel.app",
-        ]:
-            return True
-
-        # 4. 개발 환경
-        if self.APP_ENV == "development":
-            if origin.startswith("http://localhost") or origin.startswith(
-                "http://127.0.0.1"
-            ):
+        try:
+            # 1. 환경변수에 명시적으로 허용된 origin
+            if origin in self.allowed_origins_list:
                 return True
 
-        return False
+            # 2. Vercel 프리뷰/배포 URL 패턴
+            vercel_preview_pattern = re.compile(
+                r"^https://whataboutthisname-[a-z0-9]+-selforofficial-[a-z0-9]+-projects\.vercel\.app$"
+            )
+            if vercel_preview_pattern.match(origin):
+                return True
+
+            # 3. Vercel 프로덕션 URL
+            if origin in [
+                "https://whataboutthisname.vercel.app",
+                "https://www.whataboutthisname.vercel.app",
+            ]:
+                return True
+
+            # 4. 개발 환경
+            if self.APP_ENV == "development":
+                if origin.startswith("http://localhost") or origin.startswith(
+                    "http://127.0.0.1"
+                ):
+                    return True
+
+            return False
+        except Exception as e:
+            print(f"⚠️ CORS check error: {e}")
+            return False
 
 
 settings = Settings()
 
-# 시작 시 설정 출력
-print("=" * 50)
-print(f"🔧 Environment: {settings.APP_ENV}")
-print(f"🔒 Explicit CORS Origins: {settings.allowed_origins_list}")
-print(f"✅ Vercel Pattern Matching: Enabled")
-print(f"🤖 Crawler Enabled: {settings.ENABLE_CRAWLER}")
-print("=" * 50)
+# 시작 시 설정 출력 (안전하게)
+try:
+    print("=" * 50)
+    print(f"🔧 Environment: {settings.APP_ENV}")
+    print(f"🔒 Explicit CORS Origins: {settings.allowed_origins_list}")
+    print(f"✅ Vercel Pattern Matching: Enabled")
+    print("=" * 50)
+except Exception as e:
+    print(f"⚠️ Settings print error: {e}")
