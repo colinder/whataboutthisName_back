@@ -1,35 +1,54 @@
 from dotenv import load_dotenv
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from api import api_router
 from config import settings
 
 load_dotenv()
 
-
 app = FastAPI()
 
 
-allow_origins = settings.allowed_origins_list
+# === CORS 미들웨어 (동적 origin 체크) ===
+@app.middleware("http")
+async def cors_middleware(request: Request, call_next):
+    """
+    동적으로 origin을 확인하고 CORS 헤더 추가
+    - Vercel 패턴 매칭 지원
+    - 환경변수 ALLOWED_ORIGINS 지원
+    """
+    origin = request.headers.get("origin")
+
+    # Preflight 요청 처리
+    if request.method == "OPTIONS":
+        if settings.is_allowed_origin(origin):
+            return JSONResponse(
+                content={},
+                headers={
+                    "Access-Control-Allow-Origin": origin,
+                    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                    "Access-Control-Allow-Headers": "*",
+                    "Access-Control-Allow-Credentials": "true",
+                    "Access-Control-Max-Age": "3600",
+                },
+            )
+        return JSONResponse(content={"detail": "Origin not allowed"}, status_code=403)
+
+    # 일반 요청 처리
+    response = await call_next(request)
+
+    # 허용된 origin이면 CORS 헤더 추가
+    if settings.is_allowed_origin(origin):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = (
+            "GET, POST, PUT, DELETE, OPTIONS"
+        )
+        response.headers["Access-Control-Allow-Headers"] = "*"
+
+    return response
 
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allow_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
+# === 라우터 등록 ===
 app.include_router(api_router)
-
-
-# {
-#   "target_date": [
-#     "2008-01-01", "2008-01-02", "2008-01-03", "2008-01-04", "2008-01-05", "2008-01-06", "2008-01-07", "2008-01-08", "2008-01-09", "2008-01-10",
-#     "2008-01-11", "2008-01-12", "2008-01-13", "2008-01-14", "2008-01-15", "2008-01-16", "2008-01-17", "2008-01-18", "2008-01-19", "2008-01-20",
-#     "2008-01-21", "2008-01-22", "2008-01-23", "2008-01-24", "2008-01-25", "2008-01-26", "2008-01-27", "2008-01-28", "2008-01-29", "2008-01-30",
-#     "2008-01-31"
-#   ]
-# }
