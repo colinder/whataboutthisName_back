@@ -20,34 +20,43 @@ async def cors_middleware(request: Request, call_next):
     """
     origin = request.headers.get("origin")
 
-    # Preflight 요청 처리
-    if request.method == "OPTIONS":
-        if settings.is_allowed_origin(origin):
+    try:
+        # Preflight 요청 처리
+        if request.method == "OPTIONS":
+            if settings.is_allowed_origin(origin):
+                return JSONResponse(
+                    content={},
+                    headers={
+                        "Access-Control-Allow-Origin": origin,
+                        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                        "Access-Control-Allow-Headers": "*",
+                        "Access-Control-Allow-Credentials": "true",
+                        "Access-Control-Max-Age": "3600",
+                    },
+                )
             return JSONResponse(
-                content={},
-                headers={
-                    "Access-Control-Allow-Origin": origin,
-                    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-                    "Access-Control-Allow-Headers": "*",
-                    "Access-Control-Allow-Credentials": "true",
-                    "Access-Control-Max-Age": "3600",
-                },
+                content={"detail": "Origin not allowed"}, status_code=403
             )
-        return JSONResponse(content={"detail": "Origin not allowed"}, status_code=403)
 
-    # 일반 요청 처리
-    response = await call_next(request)
+        # 일반 요청 처리
+        response = await call_next(request)
 
-    # 허용된 origin이면 CORS 헤더 추가
-    if settings.is_allowed_origin(origin):
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Allow-Methods"] = (
-            "GET, POST, PUT, DELETE, OPTIONS"
-        )
-        response.headers["Access-Control-Allow-Headers"] = "*"
+        # 허용된 origin이면 CORS 헤더 추가
+        if settings.is_allowed_origin(origin):
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = (
+                "GET, POST, PUT, DELETE, OPTIONS"
+            )
+            response.headers["Access-Control-Allow-Headers"] = "*"
 
-    return response
+        return response
+
+    except Exception as e:
+        # CORS 미들웨어 에러 발생 시 로그 출력하고 요청 진행
+        print(f"⚠️ CORS middleware error: {e}")
+        response = await call_next(request)
+        return response
 
 
 # === 라우터 등록 ===

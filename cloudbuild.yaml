@@ -1,5 +1,4 @@
 steps:
-  # 1. Docker 이미지 빌드
   - name: 'gcr.io/cloud-builders/docker'
     args: 
       - 'build'
@@ -8,8 +7,8 @@ steps:
       - '-t'
       - 'gcr.io/$PROJECT_ID/whataboutthisname-back:latest'
       - '.'
+    timeout: '1200s'  # 20분
   
-  # 2. Container Registry에 푸시
   - name: 'gcr.io/cloud-builders/docker'
     args: 
       - 'push'
@@ -20,7 +19,6 @@ steps:
       - 'push'
       - 'gcr.io/$PROJECT_ID/whataboutthisname-back:latest'
   
-  # 3. Cloud Run에 자동 배포
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -31,11 +29,13 @@ steps:
       - '--region=asia-northeast3'
       - '--platform=managed'
       - '--allow-unauthenticated'
+      - '--timeout=300'  # 5분 타임아웃
+    timeout: '600s'  # 10분
 
 images:
   - 'gcr.io/$PROJECT_ID/whataboutthisname-back:$COMMIT_SHA'
   - 'gcr.io/$PROJECT_ID/whataboutthisname-back:latest'
 
-# 로깅 옵션 추가 (여기가 핵심!)
 options:
   logging: CLOUD_LOGGING_ONLY
+timeout: '1800s'  # 전체 30분
