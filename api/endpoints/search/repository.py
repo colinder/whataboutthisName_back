@@ -73,7 +73,7 @@ class SearchRepository:
                 .join(Record, Record.name_id == Name.id)
                 .join(CrawlLog, CrawlLog.id == Record.crawl_log_id)
                 .where(CrawlLog.city == "전체")  # ✅ city='전체'
-                .where(CrawlLog.gender.in_(["남", "여"]))
+                .where(CrawlLog.gender.in_(["남자", "여자"]))
             )
         else:
             # 특정 성별
@@ -124,7 +124,7 @@ class SearchRepository:
                 .join(Record, Record.name_id == Name.id)
                 .join(CrawlLog, CrawlLog.id == Record.crawl_log_id)
                 .where(CrawlLog.city != "전체")  # ✅ city != '전체'
-                .where(CrawlLog.gender.in_(["남", "여"]))
+                .where(CrawlLog.gender.in_(["남자", "여자"]))
             )
         else:
             # 특정 성별
