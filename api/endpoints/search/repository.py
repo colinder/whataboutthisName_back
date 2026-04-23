@@ -19,32 +19,24 @@ class SearchRepository:
         last_date_stmt = select(func.max(CrawlLog.record_date))
         last_crawl = self.db.execute(last_date_stmt).scalar()
 
-        # 전체 (대법원 공식 값)
-        total_stmt = (
-            select(func.sum(Record.count))
-            .join(CrawlLog, Record.crawl_log_id == CrawlLog.id)
-            .where(CrawlLog.gender == "전체")
-            .where(CrawlLog.city == "전체")
-        )
-        total_records = self.db.execute(total_stmt).scalar() or 0
-
-        # 남아
+        # 남아 (전체 합산)
         male_stmt = (
             select(func.sum(Record.count))
             .join(CrawlLog, Record.crawl_log_id == CrawlLog.id)
             .where(CrawlLog.gender == "남자")
-            .where(CrawlLog.city == "전체")
         )
         male_count = self.db.execute(male_stmt).scalar() or 0
 
-        # 여아
+        # 여아 (전체 합산)
         female_stmt = (
             select(func.sum(Record.count))
             .join(CrawlLog, Record.crawl_log_id == CrawlLog.id)
             .where(CrawlLog.gender == "여자")
-            .where(CrawlLog.city == "전체")
         )
         female_count = self.db.execute(female_stmt).scalar() or 0
+
+        # 전체 (남 + 여)
+        total_records = male_count + female_count  # ✅ 계산
 
         return {
             "total_records": total_records,
@@ -61,45 +53,131 @@ class SearchRepository:
         limit: int,
         exclude_etc: bool = True,
     ):
-        """전체 선택 시 남자+여자 합산"""
+        """
+        우선순위 조회:
+        1. city='전체' 데이터 우선
+        2. 전체에 없는 이름만 시도별(남/여) 합산
+        """
+
+        # ============================================================
+        # Step 1: city='전체' 데이터 조회
+        # ============================================================
+
         if not gender or gender == "전체":
             # 남자 + 여자 합산
-            stmt = (
+            stmt_all = (
                 select(
                     Name.name,
                     func.sum(Record.count).label("total_count"),
                 )
                 .join(Record, Record.name_id == Name.id)
                 .join(CrawlLog, CrawlLog.id == Record.crawl_log_id)
-                .where(CrawlLog.gender.in_(["남자", "여자"]))
+                .where(CrawlLog.city == "전체")  # ✅ city='전체'
+                .where(CrawlLog.gender.in_(["남", "여"]))
             )
         else:
-            stmt = (
+            # 특정 성별
+            stmt_all = (
                 select(
                     Name.name,
                     func.sum(Record.count).label("total_count"),
                 )
                 .join(Record, Record.name_id == Name.id)
                 .join(CrawlLog, CrawlLog.id == Record.crawl_log_id)
+                .where(CrawlLog.city == "전체")  # ✅ city='전체'
                 .where(CrawlLog.gender == gender)
             )
 
-        stmt = self._apply_city_filter(stmt, None)
-
+        # 공통 필터
         if year:
-            stmt = stmt.where(func.extract("year", CrawlLog.record_date) == year)
+            stmt_all = stmt_all.where(
+                func.extract("year", CrawlLog.record_date) == year
+            )
         if month:
-            stmt = stmt.where(func.extract("month", CrawlLog.record_date) == month)
+            stmt_all = stmt_all.where(
+                func.extract("month", CrawlLog.record_date) == month
+            )
         if exclude_etc:
-            stmt = stmt.where(Name.name != "기타")
+            stmt_all = stmt_all.where(Name.name != "기타")
 
-        stmt = (
-            stmt.group_by(Name.name)
-            .order_by(func.sum(Record.count).desc())
-            .limit(limit)
-        )
+        stmt_all = stmt_all.group_by(Name.name)
 
-        return self.db.execute(stmt).all()
+        # city='전체' 결과
+        results_all = self.db.execute(stmt_all).all()
+
+        # 전체 데이터에 있는 이름들
+        names_in_all = {row.name for row in results_all}
+
+        print(f"    📊 city='전체'에서 조회된 이름: {len(names_in_all)}개")
+
+        # ============================================================
+        # Step 2: 시도별 합산 (전체에 없는 이름만)
+        # ============================================================
+
+        if not gender or gender == "전체":
+            # 남자 + 여자 합산
+            stmt_regional = (
+                select(
+                    Name.name,
+                    func.sum(Record.count).label("total_count"),
+                )
+                .join(Record, Record.name_id == Name.id)
+                .join(CrawlLog, CrawlLog.id == Record.crawl_log_id)
+                .where(CrawlLog.city != "전체")  # ✅ city != '전체'
+                .where(CrawlLog.gender.in_(["남", "여"]))
+            )
+        else:
+            # 특정 성별
+            stmt_regional = (
+                select(
+                    Name.name,
+                    func.sum(Record.count).label("total_count"),
+                )
+                .join(Record, Record.name_id == Name.id)
+                .join(CrawlLog, CrawlLog.id == Record.crawl_log_id)
+                .where(CrawlLog.city != "전체")  # ✅ city != '전체'
+                .where(CrawlLog.gender == gender)
+            )
+
+        # 공통 필터
+        if year:
+            stmt_regional = stmt_regional.where(
+                func.extract("year", CrawlLog.record_date) == year
+            )
+        if month:
+            stmt_regional = stmt_regional.where(
+                func.extract("month", CrawlLog.record_date) == month
+            )
+        if exclude_etc:
+            stmt_regional = stmt_regional.where(Name.name != "기타")
+
+        # ✅ 전체에 없는 이름만 필터링
+        if names_in_all:
+            stmt_regional = stmt_regional.where(Name.name.notin_(names_in_all))
+
+        stmt_regional = stmt_regional.group_by(Name.name)
+
+        # 시도별 결과
+        results_regional = self.db.execute(stmt_regional).all()
+
+        print(f"    📊 시도별에서 조회된 이름 (전체 제외): {len(results_regional)}개")
+
+        # ============================================================
+        # Step 3: 병합 및 정렬
+        # ============================================================
+
+        # 결과 병합
+        combined_results = list(results_all) + list(results_regional)
+
+        # 건수 기준 내림차순 정렬
+        combined_results.sort(key=lambda x: x.total_count, reverse=True)
+
+        # limit 적용
+        final_results = combined_results[:limit]
+
+        print(f"    📊 최종 결과: {len(final_results)}개 (limit: {limit})")
+
+        return final_results
 
     def get_name_gender_stats(self, name: str):
         """특정 이름의 성별 전체 건수"""

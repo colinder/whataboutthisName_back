@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from api.endpoints import collector_router, search_router
+from api.endpoints import collector_router, crawler_router, search_router
 
 api_router = APIRouter()
 
@@ -14,4 +14,10 @@ api_router.include_router(
     search_router,
     prefix="/search",
     tags=["Search"],
+)
+
+api_router.include_router(
+    crawler_router,
+    prefix="/crawler",
+    tags=["Crawler"],
 )
