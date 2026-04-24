@@ -5,10 +5,6 @@ import time
 from datetime import date
 from itertools import product
 
-from database import SessionLocal
-from models.Enums import CityEnum, GenderEnum
-from models.name import Name
-from models.record import Record
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeService
@@ -17,6 +13,11 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from sqlalchemy import select
 from webdriver_manager.chrome import ChromeDriverManager
+
+from database import SessionLocal
+from models.enums import CityEnum, GenderEnum
+from models.name import Name
+from models.record import Record
 
 from .db_service import save_crawl_results, save_empty_crawl_log
 

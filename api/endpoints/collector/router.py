@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from api.endpoints.collector.service import CollectorService
 from database import get_db
 from models.crawl_log import CrawlLog
-from models.Enums import CityEnum, GenderEnum
+from models.enums import CityEnum, GenderEnum
 
 from ..utils import parse_date_input
 

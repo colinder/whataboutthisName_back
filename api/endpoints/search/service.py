@@ -221,7 +221,7 @@ class SearchService:
         results = self.repo.get_crawl_status_by_year(year)
 
         # 전체 도시 × 성별 조합 수
-        from models.Enums import CityEnum, GenderEnum
+        from models.enums import CityEnum, GenderEnum
 
         expected = len(list(CityEnum)) * len(list(GenderEnum))
 

@@ -5,12 +5,12 @@ DB 저장 서비스
 
 from datetime import date, datetime
 
+from sqlalchemy import select
+
 from database import SessionLocal
 from models.crawl_log import CrawlLog
 from models.name import Name
 from models.record import Record
-from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 
 def save_crawl_results(all_results: list[dict]):
