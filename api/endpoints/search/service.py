@@ -397,3 +397,24 @@ class SearchService:
     def search_names(self, query: str):
         """이름 검색"""
         return self.repo.search_names(query)
+
+    def get_crawl_calendar(self, year: int | None = None) -> list[dict]:
+        """
+        캘린더용 날짜별 수집 개수 조회
+
+        Args:
+            year: 연도 필터 (선택사항)
+
+        Returns:
+            [
+                {"date": "2008-01-01", "count": 48, "level": 4},
+                {"date": "2008-01-02", "count": 48, "level": 4},
+                ...
+            ]
+
+        Level:
+            0: 미수집 (0개)
+            3: 부분 수집 (1~47개 또는 1~50개)
+            4: 완전 수집 (48개 이상 또는 51개 이상)
+        """
+        return self.repo.get_crawl_calendar(year)

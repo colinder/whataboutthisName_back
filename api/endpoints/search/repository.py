@@ -1,6 +1,7 @@
+import calendar
 import re
 
-from sqlalchemy import func, select
+from sqlalchemy import extract, func, select
 from sqlalchemy.orm import Session
 
 from models.crawl_log import CrawlLog
@@ -44,8 +45,6 @@ class SearchRepository:
             "total_male_count": male_count,
             "total_female_count": female_count,
         }
-
-    # api/endpoints/search/repository.py
 
     def get_statistics_combined(
         self,
@@ -618,3 +617,68 @@ class SearchRepository:
         pattern += "$"  # 끝
 
         return pattern
+
+    def get_crawl_calendar(self, year: int | None = None) -> list[dict]:
+        """
+        캘린더용 날짜별 수집 개수 조회
+
+        Args:
+            year: 연도 필터 (선택사항)
+
+        Returns:
+            [
+                {"date": "2008-01-01", "count": 48, "level": 4},
+                {"date": "2008-01-02", "count": 48, "level": 4},
+                ...
+            ]
+        """
+        # 날짜별 수집 개수 조회
+        stmt = select(
+            CrawlLog.record_date, func.count(CrawlLog.id).label("count")
+        ).group_by(CrawlLog.record_date)
+
+        if year:
+            stmt = stmt.where(extract("year", CrawlLog.record_date) == year)
+
+        stmt = stmt.order_by(CrawlLog.record_date)
+
+        results = self.db.execute(stmt).all()
+
+        # 캘린더 데이터 변환
+        calendar_data = []
+        for row in results:
+            count = row.count
+            record_date = row.record_date
+
+            # 월말 여부 확인
+            last_day = calendar.monthrange(record_date.year, record_date.month)[1]
+            is_last_day = record_date.day == last_day
+
+            # 레벨 계산
+            if is_last_day:
+                # 월말: 48(시도별) + 3(전체 남/여/전체) = 51개
+                if count >= 51:
+                    level = 4  # 완전 수집
+                elif count >= 1:
+                    level = 3  # 부분 수집
+                else:
+                    level = 0  # 미수집
+            else:
+                # 평일: 48개(시도별 남/여)
+                if count >= 48:
+                    level = 4  # 완전 수집
+                elif count >= 1:
+                    level = 3  # 부분 수집
+                else:
+                    level = 0  # 미수집
+
+            calendar_data.append(
+                {
+                    "date": record_date.strftime("%Y-%m-%d"),
+                    "count": count,
+                    "display_count": 1,
+                    "level": level,
+                }
+            )
+
+        return calendar_data
