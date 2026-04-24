@@ -45,6 +45,8 @@ class SearchRepository:
             "total_female_count": female_count,
         }
 
+    # api/endpoints/search/repository.py
+
     def get_statistics_combined(
         self,
         year: int | None,
@@ -55,8 +57,8 @@ class SearchRepository:
     ):
         """
         우선순위 조회:
-        1. city='전체' 데이터 우선
-        2. 전체에 없는 이름만 시도별(남/여) 합산
+        1. city='전체' 데이터 우선 (gender에 따라 '전체', '남자', '여자')
+        2. 전체에 없는 이름만 시도별 합산
         """
 
         # ============================================================
@@ -64,7 +66,7 @@ class SearchRepository:
         # ============================================================
 
         if not gender or gender == "전체":
-            # 남자 + 여자 합산
+            # ✅ gender='전체' 사용 (대법원 공식값)
             stmt_all = (
                 select(
                     Name.name,
@@ -72,11 +74,11 @@ class SearchRepository:
                 )
                 .join(Record, Record.name_id == Name.id)
                 .join(CrawlLog, CrawlLog.id == Record.crawl_log_id)
-                .where(CrawlLog.city == "전체")  # ✅ city='전체'
-                .where(CrawlLog.gender.in_(["남자", "여자"]))
+                .where(CrawlLog.city == "전체")
+                .where(CrawlLog.gender == "전체")  # ✅ 핵심 변경!
             )
         else:
-            # 특정 성별
+            # 특정 성별 (남자 또는 여자)
             stmt_all = (
                 select(
                     Name.name,
@@ -84,8 +86,8 @@ class SearchRepository:
                 )
                 .join(Record, Record.name_id == Name.id)
                 .join(CrawlLog, CrawlLog.id == Record.crawl_log_id)
-                .where(CrawlLog.city == "전체")  # ✅ city='전체'
-                .where(CrawlLog.gender == gender)
+                .where(CrawlLog.city == "전체")
+                .where(CrawlLog.gender == gender)  # '남자' 또는 '여자'
             )
 
         # 공통 필터
@@ -108,8 +110,6 @@ class SearchRepository:
         # 전체 데이터에 있는 이름들
         names_in_all = {row.name for row in results_all}
 
-        print(f"    📊 city='전체'에서 조회된 이름: {len(names_in_all)}개")
-
         # ============================================================
         # Step 2: 시도별 합산 (전체에 없는 이름만)
         # ============================================================
@@ -123,7 +123,7 @@ class SearchRepository:
                 )
                 .join(Record, Record.name_id == Name.id)
                 .join(CrawlLog, CrawlLog.id == Record.crawl_log_id)
-                .where(CrawlLog.city != "전체")  # ✅ city != '전체'
+                .where(CrawlLog.city != "전체")
                 .where(CrawlLog.gender.in_(["남자", "여자"]))
             )
         else:
@@ -135,7 +135,7 @@ class SearchRepository:
                 )
                 .join(Record, Record.name_id == Name.id)
                 .join(CrawlLog, CrawlLog.id == Record.crawl_log_id)
-                .where(CrawlLog.city != "전체")  # ✅ city != '전체'
+                .where(CrawlLog.city != "전체")
                 .where(CrawlLog.gender == gender)
             )
 
@@ -160,8 +160,6 @@ class SearchRepository:
         # 시도별 결과
         results_regional = self.db.execute(stmt_regional).all()
 
-        print(f"    📊 시도별에서 조회된 이름 (전체 제외): {len(results_regional)}개")
-
         # ============================================================
         # Step 3: 병합 및 정렬
         # ============================================================
@@ -174,8 +172,6 @@ class SearchRepository:
 
         # limit 적용
         final_results = combined_results[:limit]
-
-        print(f"    📊 최종 결과: {len(final_results)}개 (limit: {limit})")
 
         return final_results
 
