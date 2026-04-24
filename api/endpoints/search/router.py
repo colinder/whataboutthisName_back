@@ -127,3 +127,39 @@ async def get_data_overview(
     service: SearchService = Depends(get_service),
 ):
     return service.get_data_overview()
+
+
+@search_router.get("/calendar")
+async def get_crawl_calendar(
+    year: int | None = Query(None, description="연도 필터"),
+    db: Session = Depends(get_db),
+):
+    """
+        캘린더용 날짜별 수집 개수 조회
+
+        ## Query Parameters
+        - **year**: 연도 필터 (선택사항, 예: 2008)
+
+        ## Response
+    ```json
+        [
+            {
+                "date": "2008-01-01",
+                "count": 48,
+                "level": 4
+            },
+            {
+                "date": "2008-01-02",
+                "count": 24,
+                "level": 3
+            }
+        ]
+    ```
+
+        ## Level
+        - **0**: 미수집 (0개)
+        - **3**: 부분 수집 (1~47개 또는 1~50개)
+        - **4**: 완전 수집 (48개 이상 또는 51개 이상)
+    """
+    service = SearchService(db)
+    return service.get_crawl_calendar(year)
