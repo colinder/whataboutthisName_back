@@ -18,7 +18,7 @@ class CourtNameCrawler:
         # ✅ 재시도 설정
         self.max_retries = 3  # 최대 3번 재시도
         self.retry_delay = 5  # 5초 대기
-
+        self.failed_items: list[dict] = []  # ← 추가
         # 24개 시도 코드 (현재 17개 + 구 명칭 7개)
         self.all_city_codes = [
             "11",
@@ -73,7 +73,19 @@ class CourtNameCrawler:
             "params": self._build_params_daily(date_str, city_code, gender_code),
         }
 
-        return self._request(data)
+        result = self._request(data)
+
+        # ← 추가: 실패 시 기록
+        if result is None:
+            self.failed_items.append({
+                "date": str(target_date),
+                "city_code": city_code,
+                "gender_code": gender_code,
+                "type": "daily",
+            })
+
+        return result
+
 
     def fetch_data_by_month(
         self,
@@ -104,7 +116,18 @@ class CourtNameCrawler:
             "params": self._build_params_monthly(year_month, gender_code),
         }
 
-        return self._request(data)
+        result = self._request(data)
+
+        # ← 추가: 실패 시 기록
+        if result is None:
+            self.failed_items.append({
+                "date": f"{year}-{month:02d}",
+                "city_code": "전체",
+                "gender_code": gender_code,
+                "type": "monthly",
+            })
+
+        return result
 
     def _build_params_daily(
         self, date_str: str, city_code: str, gender_code: str
@@ -217,7 +240,7 @@ class CourtNameCrawler:
                 response.raise_for_status()
 
                 # Rate limiting (서버 부하 방지)
-                time.sleep(1)
+                time.sleep(1.5)
 
                 return response.json()
 
@@ -258,3 +281,24 @@ class CourtNameCrawler:
                     return None
 
         return None
+
+    def print_failed_summary(self):
+        """모든 크롤링 완료 후 호출"""
+        if not self.failed_items:
+            print("\n✅ 모든 항목 크롤링 성공")
+            return
+
+        print(f"\n❌ 실패 항목 {len(self.failed_items)}개 (재크롤링 필요):")
+        print("=" * 60)
+        for item in self.failed_items:
+            print(
+                f"  날짜: {item['date']:<12} "
+                f"| 지역코드: {item['city_code']:<6} "
+                f"| 성별코드: {item['gender_code']} "
+                f"| 타입: {item['type']}"
+            )
+        print("=" * 60)
+
+        # 재크롤링용 날짜만 따로 출력 (API target_date 형식)
+        failed_dates = sorted(set(item["date"] for item in self.failed_items))
+        print(f"\n📋 재크롤링 target_date:\n{failed_dates}")

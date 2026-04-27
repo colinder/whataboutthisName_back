@@ -46,6 +46,8 @@ class CrawlerService:
         print(f"🎉 모든 수집 완료!")
         print(f"{'=' * 60}\n")
 
+        self.crawler.print_failed_summary()  # ← 여기 한 줄만 추가
+
     async def crawl_date(self, target_date: date):
         """
         특정 날짜의 데이터 수집
