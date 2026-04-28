@@ -185,8 +185,9 @@ class SearchRepository:
             .join(Name, Name.id == Record.name_id)
             .join(CrawlLog, CrawlLog.id == Record.crawl_log_id)
             .where(Name.name == name)
-            .where(CrawlLog.city == "전체")
+            .where(CrawlLog.city != "전체")
             .where(CrawlLog.gender.in_(["남자", "여자"]))
+            .where(CrawlLog.is_success.is_(True))
             .group_by(CrawlLog.gender)
         )
 
@@ -215,8 +216,9 @@ class SearchRepository:
             .select_from(Record)
             .join(Name, Name.id == Record.name_id)
             .join(CrawlLog, CrawlLog.id == Record.crawl_log_id)
-            .where(CrawlLog.city == "전체")
+            .where(CrawlLog.city != "전체")
             .where(Name.name != "기타")
+            .where(CrawlLog.is_success.is_(True))
             .group_by(
                 func.extract("year", CrawlLog.record_date),
                 CrawlLog.gender,
@@ -252,7 +254,7 @@ class SearchRepository:
                 func.sum(Record.count).label("total_count"),
             )
             .join(Record, Record.crawl_log_id == CrawlLog.id)
-            .where(CrawlLog.city == "전체")  # 도시 중복 방지
+            .where(CrawlLog.city != "전체")  # 도시 중복 방지
             .where(CrawlLog.gender.in_(["남자", "여자"]))  # 전체 제외
             .where(CrawlLog.is_success.is_(True))  # 성공한 크롤링만
             .group_by(func.extract("year", CrawlLog.record_date), CrawlLog.gender)
@@ -273,8 +275,9 @@ class SearchRepository:
             .join(CrawlLog, CrawlLog.id == Record.crawl_log_id)
             .where(func.extract("year", CrawlLog.record_date) == year)
             .where(CrawlLog.gender == gender)
-            .where(CrawlLog.city == "전체")
+            .where(CrawlLog.city != "전체")
             .where(Name.name != "기타")
+            .where(CrawlLog.is_success.is_(True))
             .group_by(Name.name)
             .order_by(func.sum(Record.count).desc())
         )
@@ -297,7 +300,9 @@ class SearchRepository:
             )
             .select_from(Record)
             .join(CrawlLog, CrawlLog.id == Record.crawl_log_id)
-            .where(CrawlLog.city == "전체")
+            .where(CrawlLog.city != "전체")          # 👈 변경
+            .where(CrawlLog.gender.in_(["남자", "여자"]))  # 👈 추가 (전체 gender 제외)
+            .where(CrawlLog.is_success.is_(True))    # 👈 추가
             .group_by(
                 func.extract("year", CrawlLog.record_date),
                 CrawlLog.gender,
@@ -478,11 +483,16 @@ class SearchRepository:
             )
             .join(CrawlLog, CrawlLog.id == Record.crawl_log_id)
             .where(Record.name_id == name_obj.id)
+            .where(CrawlLog.is_success.is_(True))  # 👈 추가
         )
 
-        stmt = self._apply_city_filter(stmt, city)
-        stmt = self._apply_gender_filter(stmt, gender)
+        # _apply_city_filter 대신 직접 처리
+        if city and city != "전체":
+            stmt = stmt.where(CrawlLog.city == city)
+        else:
+            stmt = stmt.where(CrawlLog.city != "전체")  # 👈 지역 합산
 
+        stmt = self._apply_gender_filter(stmt, gender)
         stmt = stmt.group_by(CrawlLog.record_date).order_by(CrawlLog.record_date)
 
         return self.db.execute(stmt).all()
