@@ -300,9 +300,7 @@ class SearchRepository:
             )
             .select_from(Record)
             .join(CrawlLog, CrawlLog.id == Record.crawl_log_id)
-            .where(CrawlLog.city != "전체")          # 👈 변경
-            .where(CrawlLog.gender.in_(["남자", "여자"]))  # 👈 추가 (전체 gender 제외)
-            .where(CrawlLog.is_success.is_(True))    # 👈 추가
+            .where(CrawlLog.city == "전체")
             .group_by(
                 func.extract("year", CrawlLog.record_date),
                 CrawlLog.gender,
