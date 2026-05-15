@@ -72,7 +72,9 @@ class CrawlerService:
                 )
 
         # 모든 시도별 데이터 수집
-        await asyncio.gather(*tasks)
+        # await asyncio.gather(*tasks)
+        for task in tasks:
+            await task
 
         # 2. 마지막 날이면 월 전체도 수집
         if is_last_day_of_month(target_date):
@@ -89,7 +91,9 @@ class CrawlerService:
                     )
                 )
 
-            await asyncio.gather(*monthly_tasks)
+            # await asyncio.gather(*monthly_tasks)
+            for task in monthly_tasks:
+                await task
 
     async def _crawl_regional_data(
         self, target_date: date, city_code: str, city_name: str, gender_code: str

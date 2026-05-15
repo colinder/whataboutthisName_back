@@ -1,12 +1,21 @@
 # api/endpoints/crawler/router.py
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from datetime import date, timedelta
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.endpoints.crawler.schemas import CrawlRequest, CrawlResponse
 from api.endpoints.crawler.service import CrawlerService
 from api.endpoints.crawler.utils import parse_date_ranges
+from config import settings
 from database import get_db
+
+
+class AutoCrawlRequest(BaseModel):
+    secret: str
+
 
 crawler_router = APIRouter()
 
@@ -68,6 +77,24 @@ async def crawl(
     )
 
 
+@crawler_router.post("/auto")
+async def crawl_auto(
+    background_tasks: BackgroundTasks,
+    body: AutoCrawlRequest,
+    db: Session = Depends(get_db),
+):
+    if body.secret != settings.SECRET:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    target = date.today() - timedelta(days=2)
+    dates = {target}
+
+    service = CrawlerService(db)
+    background_tasks.add_task(service.run_crawl, dates=dates)
+
+    return {"message": "크롤링 시작", "target_date": str(target)}
+
+
 @crawler_router.get("/status")
 async def get_crawl_status(db: Session = Depends(get_db)):
     """
@@ -100,75 +127,77 @@ async def get_crawl_status(db: Session = Depends(get_db)):
         "latest_date": latest.record_date if latest else None,
     }
 
+
 @crawler_router.post("/recrawl")
 async def recrawl_specific_dates(
     background_tasks: BackgroundTasks,
     body: CrawlRequest,  # 기존 스키마 재사용
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     특정 날짜 재크롤링
-    
+
     기존 데이터를 삭제하고 새로 크롤링합니다.
-    
+
     Request:
     {
         "target_date": ["2009-02-12", "2009-02-13"]
     }
     """
-    from api.endpoints.crawler.utils import parse_date_ranges
     from api.endpoints.crawler.service import CrawlerService
+    from api.endpoints.crawler.utils import parse_date_ranges
     from models.crawl_log import CrawlLog
     from models.record import Record
-    
+
     # 날짜 파싱
     dates = parse_date_ranges(body.target_date)
     sorted_dates = sorted(dates)
-    
-    print(f"\n{'='*60}")
+
+    print(f"\n{'=' * 60}")
     print(f"🔄 재크롤링 요청")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"날짜: {sorted_dates}")
-    print(f"{'='*60}\n")
-    
+    print(f"{'=' * 60}\n")
+
     # 기존 데이터 삭제
     for target_date in sorted_dates:
         print(f"🗑️ {target_date} 기존 데이터 삭제 중...")
-        
+
         # 해당 날짜의 crawl_log_id 조회
-        crawl_log_ids = db.query(CrawlLog.id).filter(
-            CrawlLog.record_date == target_date
-        ).all()
-        
+        crawl_log_ids = (
+            db.query(CrawlLog.id).filter(CrawlLog.record_date == target_date).all()
+        )
+
         crawl_log_ids = [row.id for row in crawl_log_ids]
-        
+
         if crawl_log_ids:
             # records 삭제
-            deleted_records = db.query(Record).filter(
-                Record.crawl_log_id.in_(crawl_log_ids)
-            ).delete(synchronize_session=False)
-            
+            deleted_records = (
+                db.query(Record)
+                .filter(Record.crawl_log_id.in_(crawl_log_ids))
+                .delete(synchronize_session=False)
+            )
+
             # crawl_logs 삭제
-            deleted_logs = db.query(CrawlLog).filter(
-                CrawlLog.record_date == target_date
-            ).delete(synchronize_session=False)
-            
+            deleted_logs = (
+                db.query(CrawlLog)
+                .filter(CrawlLog.record_date == target_date)
+                .delete(synchronize_session=False)
+            )
+
             db.commit()
-            
+
             print(f"  ✅ crawl_logs: {deleted_logs}개 삭제")
             print(f"  ✅ records: {deleted_records}개 삭제")
         else:
             print(f"  ⚠️ 기존 데이터 없음")
-    
+
     # 백그라운드 작업으로 재크롤링
     service = CrawlerService(db)
-    background_tasks.add_task(
-        service.run_crawl,
-        dates=dates
-    )
-    
+    background_tasks.add_task(service.run_crawl, dates=dates)
+
     return {
         "message": "재크롤링 시작",
         "total_dates": len(dates),
-        "dates": [d.strftime("%Y-%m-%d") for d in sorted_dates]
+        "dates": [d.strftime("%Y-%m-%d") for d in sorted_dates],
     }

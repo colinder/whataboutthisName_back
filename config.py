@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = ""
     ALLOWED_ORIGINS: str = ""
     APP_ENV: str = "development"
+    SECRET: str = ""
 
     @property
     def allowed_origins_list(self) -> List[str]:
