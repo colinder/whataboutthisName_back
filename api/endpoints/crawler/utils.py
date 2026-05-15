@@ -22,13 +22,22 @@ def parse_date_ranges(date_strings: List[str]) -> Set[date]:
     """
     monthly_ranges = []  # 월 단위
     daily_dates = []  # 일 단위
+    yearly_ranges = []  # ← 추가
 
     # 1단계: 월/일 분리
     for date_str in date_strings:
-        if len(date_str) == 7:  # YYYY-MM
+        if len(date_str) == 4:  # YYYY ← 추가
+            yearly_ranges.append(date_str)
+        elif len(date_str) == 7:  # YYYY-MM
             monthly_ranges.append(date_str)
         elif len(date_str) == 10:  # YYYY-MM-DD
             daily_dates.append(date_str)
+
+    # 연도 → 월 리스트로 변환 ← 추가
+    for year_str in yearly_ranges:
+        year = int(year_str)
+        for month in range(1, 13):
+            monthly_ranges.append(f"{year}-{month:02d}")
 
     # 2단계: 월 범위 → 날짜 set
     monthly_dates = set()
