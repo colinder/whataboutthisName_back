@@ -18,7 +18,7 @@ class CrawlRequest(BaseModel):
             raise ValueError("target_date는 필수입니다")
 
         for date_str in v:
-            if len(date_str) not in [7, 10]:
+            if len(date_str) not in [4, 7, 10]:
                 raise ValueError(
                     f"날짜 형식 오류: {date_str} (YYYY-MM 또는 YYYY-MM-DD)"
                 )
